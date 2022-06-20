@@ -1,0 +1,65 @@
+version: '2.2'
+services:
+  haproxy:
+    build:
+      context: ./haproxy/
+
+    image: doscon-haproxy
+    restart: always
+    container_name: haproxy
+    ports:
+      - "0.0.0.0:80:80"
+      - "0.0.0.0:443:443"
+    volumes:
+      - ./haproxy:/usr/local/etc/haproxy
+      - ./certbot/conf/live/${DOMAIN}/${DOMAIN}.pem:/usr/share/tb-haproxy/default.pem
+    links:
+      - thingsboard
+    depends_on:
+      - thingsboard
+
+  certverify:
+    image: nginx:latest
+    volumes:
+      - ./certbot/www:/usr/share/nginx/html
+
+  certbot:
+    image: certbot/certbot:latest
+    volumes:
+      - ./certbot/www:/var/www/certbot/:rw
+      - ./certbot/conf:/etc/letsencrypt/:rw
+
+       
+  thingsboard:
+    restart: unless-stopped
+    container_name: thingsboard
+    image: "thingsboard/tb-postgres:3.3.3"
+    ports:
+      - "0.0.0.0:1883:1883"
+      - "0.0.0.0:7070:7070"
+      - "5683-5688:5683-5688/udp"
+    environment:
+      TB_QUEUE_TYPE: in-memory
+      SPRING_DATASOURCE_URL: jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}
+      SPRING_DATASOURCE_PASSWORD: ${DB_USER}
+      SPRING_DATASOURCE_USERNAME: ${DB_PASSWORD}
+    volumes:
+      - ./logs:/var/log/thingsboard
+      - ./thingsboard/thingsboard.conf:/etc/thingsboard/conf/thingsboard.conf
+      - ./thingsboard/logback.xml:/etc/thingsboard/conf/logback.xml
+#     - ./thingsboard/ssl:/etc/thingsboard/conf/ssl
+    links:
+      - postgres
+    depends_on:
+      - postgres
+
+  postgres: #do not use container for production database
+    container_name: database
+    restart: unless-stopped
+    image: "postgres:12"
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - ./data:/var/lib/postgresql/data
+      - ./backup:/opt/backup
